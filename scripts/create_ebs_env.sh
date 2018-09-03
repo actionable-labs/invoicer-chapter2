@@ -5,11 +5,22 @@
 # uncomment to debug
 #set -x
 
+# The latest events can be found at 
+#cat tmp/$identifier/eb-events*.json |less
+
+##############################
+# Run as a script.
+##########################
+
 # Don't set this variable if you are copy/pasting or vim-sliming
 EXEC_AS_SCRIPT=true
 
 PS1="#> " 
 
+
+##############################
+# Create a fail condition
+##########################
 fail() {
     echo configuration failed
     if [ $EXEC_AS_SCRIPT ] ; 
@@ -19,29 +30,36 @@ fail() {
 }
 
 
-export AWS_DEFAULT_REGION=${AWS_REGION:-us-west-2}
+##############################
+# Set up environment for this run
+##########################
+export AWS_DEFAULT_REGION=${AWS_REGION:-us-east-2}
 
 datetag=$(date +%Y%m%d%H%M)
 identifier=$(whoami)-invoicer-$datetag
 mkdir -p tmp/$identifier
 
 
-exit
-
-# Notes. We left off with this.
-#identifier=psgivens-invoicer-201806120644
-#datetag="201806120644"
-
-# The latest events can be found at 
-#cat tmp/$identifier/eb-events*.json |less
 
 
+##############################
+# Get the VPC Id
+##########################
 clear
 echo "Creating EBS application $identifier"
 # Find the ID of the default VPC
 aws ec2 describe-vpcs --filters Name=isDefault,Values=true > tmp/$identifier/defaultvpc.json || fail
 vpcid=$(jq -r '.Vpcs[0].VpcId' tmp/$identifier/defaultvpc.json)
 echo "default vpc is $vpcid"
+
+
+##############################
+# Creating the database:
+# - Create Security Group
+# - Create RDS database
+# - Wait while RDS is created
+# - Add tags to the database
+##########################
 
 # Create a security group for the database
 aws ec2 create-security-group \
@@ -88,7 +106,6 @@ do
     sleep 10
 done
 echo "dbhost=$dbhost"
-
 # tagging rds instance
 aws rds add-tags-to-resource \
     --resource-name $(jq -r '.DBInstances[0].DBInstanceArn' tmp/$identifier/rds.json) \
@@ -97,16 +114,20 @@ aws rds add-tags-to-resource \
     --resource-name $(jq -r '.DBInstances[0].DBInstanceArn' tmp/$identifier/rds.json) \
     --tags "Key=Owner,Value=$(whoami)"
 
+
+##############################
+# Creating the beanstalk:
+# - Create beanstalk application
+# - Create environment configuration file
+# - Create the environment
+# - Wait for the environment to be created
+##########################
+
 # Create an elasticbeantalk application
 aws elasticbeanstalk create-application \
     --application-name $identifier \
     --description "Invoicer $env $datetag" > tmp/$identifier/ebcreateapp.json || fail
 echo "ElasticBeanTalk application created"
-
-#aws elasticbeanstalk list-available-solution-stacks  |less
-
-#"$(aws elasticbeanstalk list-available-solution-stacks | \
-    #jq -r '.SolutionStacks[]' | grep -P '.+Amazon Linux.+Docker.+' )"
 
 # Get the name of the latest Docker solution stack
 dockerstack="$(aws elasticbeanstalk list-available-solution-stacks | \
@@ -126,10 +147,16 @@ aws elasticbeanstalk create-environment \
     --solution-stack-name "$dockerstack" \
     --option-settings file://tmp/$identifier/ebs-options.json \
     --tier "Name=WebServer,Type=Standard,Version=''" > tmp/$identifier/ebcreateapienv.json || fail
+
 apieid=$(jq -r '.EnvironmentId' tmp/$identifier/ebcreateapienv.json)
 echo "API environment $apieid is being created"
 
+aws elasticbeanstalk describe-environment-resources --environment-id $apieid > tmp/$identifier/ebapidesc.json || fail
+ec2id=$(jq -r '.EnvironmentResources.Instances[0].Id' tmp/$identifier/ebapidesc.json)
+date
 
+
+clear
 # grab the instance ID of the API environment, then its security group, and add that to the RDS security group
 while true;
 do
@@ -149,6 +176,16 @@ aws ec2 describe-instances --instance-ids $ec2id > tmp/$identifier/${ec2id}.json
 sgid=$(jq -r '.Reservations[0].Instances[0].SecurityGroups[0].GroupId' tmp/$identifier/${ec2id}.json)
 aws ec2 authorize-security-group-ingress --group-id $dbsg --source-group $sgid --protocol tcp --port 5432 || fail
 echo "API security group $sgid authorized to connect to database security group $dbsg"
+
+
+
+
+##############################
+# Creating the application version
+# - Create a bucket and upload version configuration
+# - Create the application version
+# - Wait for the application version to update environment
+##########################
 
 # Upload the application version
 aws s3 mb s3://$identifier
@@ -175,47 +212,21 @@ while true; do
 done
 echo
 
+
+
+
+##############################
+# Deploy the application
+# - Deploy by updating the environment
+# - TODO: Wait for deployment
+##########################
+
 # Deploy the docker container to the instances
 aws elasticbeanstalk update-environment \
     --application-name $identifier \
     --environment-id $apieid \
     --version-label invoicer-api > tmp/$identifier/$apieid.json
 
-
-
 url="$(jq -r '.CNAME' tmp/$identifier/$apieid.json)"
 echo "Environment is being deployed. Public endpoint is http://$url"
-
-echo $url
-
-url=psgivens-invoicer-201806300737-inv-api.46mmped6da.us-west-2.elasticbeanstalk.com
-
-# Post the example
-curl -X POST \
-    --data '{"is_paid": false, "amount": 1664, "due_date": "2016-05-07T23:00:00Z", "charges": [ { "type":"blood work", "amount": 1664, "description": "blood work" } ] }' \
-    http://$url/invoice
-
-curl http://$url/invoice/1
-
-echo $url
-
-
-# Should be something like: 
-{"ID":1,"CreatedAt":"2016-05-21T15:33:21.855874Z","UpdatedAt":"2016-05-21T15:33:21.855874Z","DeletedAt":null,"is_paid":false,"amount":1664,"payment_date":"0001-01-01T00:00:00Z","due_date":"2016-05-07T23:00:00Z","charges":[{"ID":1,"CreatedAt":"2016-05-21T15:33:21.8637Z","UpdatedAt":"2016-05-21T15:33:21.8637Z","DeletedAt":null,"invoice_id":1,"type":"blood
-work","amount":1664,"description":"blood work"}]}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
