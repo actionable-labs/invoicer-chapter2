@@ -1,7 +1,24 @@
-
+#!/bin/bash
 
 ### Notes for next time
 
+    dockerusername="actionablelabs"
+    githubusername="actionable-labs"
+
+### Script header
+
+    while getopts "d:g:" option; do
+        case "${option}" in
+        d) dockerusername=$OPTARG ;;
+        g) githubusername=$OPTARG ;;
+        esac
+    done
+    
+    echo "docker: $dockerusername; github: $githubusername"
+
+exit
+
+### Set up environment varialbes
 
 ### Take inventory 
     clear
@@ -83,7 +100,7 @@
       --rm \
       -it \
       --entrypoint sh \
-      actionablelabs/invoicer-chapter2 
+      $dockerusername/invoicer-chapter2 
 
     # Run with sqlite database
     sudo docker run \
@@ -92,7 +109,7 @@
       --network secdevops-net \
       --rm \
       -d \
-      actionablelabs/invoicer-chapter2
+      $dockerusername/invoicer-chapter2
 
     # run bash in the database container
     sudo docker exec -it -u root -w /root secdevops-invoicer /bin/sh 
@@ -126,12 +143,12 @@
 
     clear
     go install --ldflags '-extldflags "-static"' \
-      github.com/actionable-labs/invoicer-chapter2
+      github.com/$githubusername/invoicer-chapter2
     
     mkdir -p bin
     cp "$GOPATH/bin/invoicer-chapter2" bin/invoicer
     
-    sudo docker build --no-cache -t actionablelabs/invoicer-chapter2 .
+    sudo docker build --no-cache -t $dockerusername/invoicer-chapter2 .
 
 ### While logged into database container
 
@@ -145,7 +162,7 @@
     
 ### Build the docker container
 
-    sudo docker build -t actionable-labs/invoicer-chapter2 -f Dockerfile .
+    sudo docker build -t $githubusername/invoicer-chapter2 -f Dockerfile .
     
 ### Remove the docker container locally
 
@@ -158,7 +175,7 @@
         sudo docker run -it \
           --name invoicer-chapter2 \
           -p 8080:8080 \
-          actionable-labs/invoicer-chapter2
+          $githubusername/invoicer-chapter2
 
 
 ### Run locally
