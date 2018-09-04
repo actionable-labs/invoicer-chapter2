@@ -1,7 +1,7 @@
 {
   "AWSEBDockerrunVersion": "1",
   "Image": {
-    "Name": "hub.docker.com/r/actionablelabs/invoicer-chapter2",
+    "Name": "docker.io/actionablelabs/invoicer-chapter2",
     "Update": "true"
   },
   "Ports": [

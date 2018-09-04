@@ -34,7 +34,6 @@ fail() {
 # Set up environment for this run
 ##########################
 export AWS_DEFAULT_REGION=${AWS_REGION:-us-east-2}
-
 datetag=$(date +%Y%m%d%H%M)
 identifier=$(whoami)-invoicer-$datetag
 mkdir -p tmp/$identifier
@@ -106,13 +105,17 @@ do
     sleep 10
 done
 echo "dbhost=$dbhost"
+
 # tagging rds instance
+dbarn=$(jq -r '.DBInstances[0].DBInstanceArn' tmp/$identifier/rds.json) 
 aws rds add-tags-to-resource \
-    --resource-name $(jq -r '.DBInstances[0].DBInstanceArn' tmp/$identifier/rds.json) \
+    --resource-name $dbarn
     --tags "Key=environment-name,Value=invoicer-api"
 aws rds add-tags-to-resource \
-    --resource-name $(jq -r '.DBInstances[0].DBInstanceArn' tmp/$identifier/rds.json) \
+    --resource-name $dbarn
     --tags "Key=Owner,Value=$(whoami)"
+aws rds list-tags-for-resource \
+    --resource-name $dbarn
 
 
 ##############################
@@ -129,9 +132,10 @@ aws elasticbeanstalk create-application \
     --description "Invoicer $env $datetag" > tmp/$identifier/ebcreateapp.json || fail
 echo "ElasticBeanTalk application created"
 
+
 # Get the name of the latest Docker solution stack
-dockerstack="$(aws elasticbeanstalk list-available-solution-stacks | \
-    jq -r '.SolutionStacks[]' | grep -P '.+Amazon Linux.+Docker.+' | head -1)"
+dockerstack="$(aws elasticbeanstalk list-available-solution-stacks \
+    | jq -r '.SolutionStacks[]' | grep -P '.+Amazon Linux.+v2\.7.+Docker.+' | head -1)"
 echo "dockerstack is '$dockerstack'"
 
 # Create the EB API environment
@@ -151,9 +155,11 @@ aws elasticbeanstalk create-environment \
 apieid=$(jq -r '.EnvironmentId' tmp/$identifier/ebcreateapienv.json)
 echo "API environment $apieid is being created"
 
+sleep 10
 aws elasticbeanstalk describe-environment-resources --environment-id $apieid > tmp/$identifier/ebapidesc.json || fail
 ec2id=$(jq -r '.EnvironmentResources.Instances[0].Id' tmp/$identifier/ebapidesc.json)
 date
+echo "ec2id is $ec2id"
 
 
 clear
