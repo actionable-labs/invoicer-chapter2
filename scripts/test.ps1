@@ -24,6 +24,7 @@ Invoke-RestMethod `
 
 $response = Invoke-RestMethod `
   -Method Get `
-  -Uri "$url/invoice/2"
-$response
+  -Uri "$url/invoice/1"
+$response | ConvertTo-Json
+
 

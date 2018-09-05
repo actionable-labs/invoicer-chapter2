@@ -2,6 +2,28 @@
 
 # requires: pip install awscli awsebcli
 
+#dockerusername="actionablelabs"
+#githubusername="actionable-labs"
+
+### Script header
+
+while getopts "d:g:" option; do
+    case "${option}" in
+    d) dockerusername=$OPTARG ;;
+    g) githubusername=$OPTARG ;;
+    esac
+done
+
+if [[ $dockerusername &&  $githubusername ]]
+then 
+  echo "docker: $dockerusername; github: $githubusername"
+else
+  echo ""
+  echo "usage: "
+  echo "  ./create_ebs_env.sh -d <dockerusername> -g <githubusername>"
+  exit
+fi
+
 # uncomment to debug
 #set -x
 
